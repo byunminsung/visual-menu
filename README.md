@@ -171,7 +171,7 @@ MIT License
 
 ## 👨‍💻 개발자
 
-프로젝트 문의: [GitHub Issues](https://github.com/minsung/visual-menu/issues)
+프로젝트 문의: [GitHub Issues](https://github.com/byunminsung/visual-menu/issues)
 
 ## 🙏 감사의 말
 
