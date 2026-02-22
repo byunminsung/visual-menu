@@ -4,7 +4,7 @@ import { MenuItem } from '@/types/menu';
  * 이미지에서 메뉴를 분석하는 함수 (서버 사이드 OCR 사용)
  * OCR, 번역, 이미지 검색 API를 통합하여 사용합니다.
  */
-export async function analyzeMenuImage(file: File): Promise<MenuItem[]> {
+export async function analyzeMenuImage(file: File, targetLanguage: string): Promise<MenuItem[]> {
   try {
     // 1단계: 서버 사이드 API를 통한 OCR 텍스트 추출
     console.log('📸 Step 1/3: Performing OCR (server-side)...');
@@ -22,13 +22,13 @@ export async function analyzeMenuImage(file: File): Promise<MenuItem[]> {
       throw new Error(errorData.error || 'Failed to analyze image on the server');
     }
 
-    const { menuItems: menuTexts } = await ocrResponse.json();
+    const { detectedLanguage, menuItems: menuTexts } = await ocrResponse.json();
 
     if (!menuTexts || menuTexts.length === 0) {
       throw new Error('No menu items detected');
     }
 
-    console.log(`✅ OCR completed. Found ${menuTexts.length} menu items:`, menuTexts);
+    console.log(`✅ OCR completed. Detected Language: ${detectedLanguage}. Found ${menuTexts.length} menu items:`, menuTexts);
 
     // 2단계: 번역 및 발음 가져오기
     console.log('🌐 Step 2/3: Translating menu items...');
@@ -38,7 +38,7 @@ export async function analyzeMenuImage(file: File): Promise<MenuItem[]> {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ texts: menuTexts }),
+      body: JSON.stringify({ texts: menuTexts, sourceLanguage: detectedLanguage, targetLanguage }),
     });
 
     if (!translateResponse.ok) {

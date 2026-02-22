@@ -13,6 +13,7 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState<ProcessingStep>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [targetLanguage, setTargetLanguage] = useState('Korean'); // 기본 번역 언어 설정
 
   console.log('🏠 [Home] Rendering Home component. State:', {
     hasMenuItems: menuItems.length > 0,
@@ -28,10 +29,10 @@ export default function Home() {
     setProcessingStep('ocr');
 
     try {
-      console.log(`🚀 [Home] Starting menu analysis for file: ${file.name} (${file.size} bytes)...`);
+      console.log(`🚀 [Home] Starting menu analysis for file: ${file.name} (${file.size} bytes) with target language: ${targetLanguage}...`);
 
       // 이미지 분석 수행
-      const items = await analyzeMenuImage(file);
+      const items = await analyzeMenuImage(file, targetLanguage);
 
       setProcessingStep('complete');
       setMenuItems(items);
@@ -51,13 +52,13 @@ export default function Home() {
         return {
           icon: '✨',
           title: 'AI 분석 중...',
-          message: 'Gemini AI가 메뉴 이미지에서 중국어 음식 이름을 추출하고 있습니다.',
+          message: 'Gemini AI가 원본 메뉴판 이미지를 분석하여 음식 이름을 추출하고 있습니다.',
         };
       case 'translate':
         return {
           icon: '🌐',
           title: '번역 중...',
-          message: '중국어를 한국어로 번역하고 발음을 생성하고 있습니다.',
+          message: `${targetLanguage}로 번역하고 발음을 생성하고 있습니다.`,
         };
       case 'search':
         return {
@@ -83,13 +84,34 @@ export default function Home() {
       {/* 헤더 */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="text-center">
-            <h1 className="text-4xl font-bold text-gray-900">
-              🍜 중국 메뉴판 번역기
+          <div className="text-center flex flex-col items-center">
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">
+              🍜 다국어 메뉴판 번역기
             </h1>
-            <p className="mt-2 text-lg text-gray-600">
-              메뉴판 사진을 업로드하면 한국어로 번역하고 발음을 알려드립니다
+            <p className="mt-2 text-lg text-gray-600 mb-6">
+              메뉴판 사진을 업로드하면 원하는 언어로 번역하고 발음을 알려드립니다
             </p>
+
+            <div className="flex items-center space-x-3 bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
+              <label htmlFor="target-lang" className="text-sm font-medium text-blue-900">
+                번역할 언어 선택:
+              </label>
+              <select
+                id="target-lang"
+                value={targetLanguage}
+                onChange={(e) => setTargetLanguage(e.target.value)}
+                disabled={isProcessing}
+                className="block w-40 pl-3 pr-10 py-1.5 text-base border-blue-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md shadow-sm bg-white"
+              >
+                <option value="Korean">Korean (한국어)</option>
+                <option value="English">English (영어)</option>
+                <option value="Japanese">Japanese (일본어)</option>
+                <option value="Chinese">Chinese (중국어)</option>
+                <option value="Spanish">Spanish (스페인어)</option>
+                <option value="French">French (프랑스어)</option>
+                <option value="German">German (독일어)</option>
+              </select>
+            </div>
           </div>
         </div>
       </header>
@@ -100,9 +122,10 @@ export default function Home() {
         <div className="mb-12 bg-blue-50 border border-blue-200 rounded-lg p-6">
           <h2 className="text-xl font-semibold text-blue-900 mb-3">📱 사용 방법</h2>
           <ol className="list-decimal list-inside space-y-2 text-blue-800">
-            <li>중국 식당의 메뉴판 사진을 촬영하거나 준비합니다</li>
+            <li>외국 식당의 메뉴판 사진을 촬영하거나 준비합니다</li>
+            <li>위에서 원하는 번역 언어를 선택합니다</li>
             <li>아래 영역에 이미지를 업로드합니다</li>
-            <li>AI가 메뉴를 분석하고 한국어로 번역합니다 (약 10-20초 소요)</li>
+            <li>AI가 메뉴를 분석하고 선택한 언어로 번역합니다 (약 10-20초 소요)</li>
             <li>각 메뉴의 발음과 설명, 실제 음식 사진을 확인합니다</li>
           </ol>
         </div>
@@ -241,7 +264,7 @@ export default function Home() {
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">자동 번역</h3>
               <p className="text-gray-600">
-                중국어를 한국어로 번역하고 발음을 표기합니다
+                선택한 언어로 메뉴를 번역하고 발음을 표기합니다
               </p>
             </div>
 

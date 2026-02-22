@@ -33,24 +33,35 @@ export async function POST(request: NextRequest) {
 
     // Define JSON Schema for the extraction
     const schema: Schema = {
-      type: SchemaType.ARRAY,
-      items: {
-        type: SchemaType.STRING,
-        description: "The name of the Chinese food dish",
-      }
+      type: SchemaType.OBJECT,
+      properties: {
+        detectedLanguage: {
+          type: SchemaType.STRING,
+          description: "The primary language the menu items are written in (e.g., 'Chinese', 'French', 'Japanese', 'English')",
+        },
+        menuItems: {
+          type: SchemaType.ARRAY,
+          items: {
+            type: SchemaType.STRING,
+          },
+          description: "The extracted original names of the food dishes in the detected language",
+        },
+      },
+      required: ["detectedLanguage", "menuItems"],
     };
 
     const prompt = `
-      You are an expert at parsing noisy OCR text and reading menus from Chinese restaurants.
-      I am providing you with an image of a Chinese restaurant menu. Your task is to extract ALL the names of the Chinese food dishes you can find in the image.
+      You are an expert at parsing noisy OCR text and reading restaurant menus from anywhere in the world.
+      I am providing you with an image of a restaurant menu. Your task is to detect the primary language of the menu, and extract ALL the names of the food dishes you can find in the image in that original language.
       
       Rules:
-      - Extract strings that are clearly Chinese food dish names.
+      - Detect the primary language of the dish names (e.g., 'Chinese', 'Korean', 'Japanese', 'French', 'Spanish', etc.).
+      - Extract strings that are clearly food dish names in the detected language.
       - EXHAUSTIVE EXTRACTION: Do NOT stop at 10 items. You MUST extract EVERY SINGLE legitimate dish name present in the menu.
-      - IGNORE prices (like 12.95, $5, etc).
-      - IGNORE English translations or garbled English words.
+      - IGNORE prices (like 12.95, $5, 1500¥, etc).
+      - IGNORE translations if the menu is bilingual (extract the primary original language dish names).
       - IGNORE single random characters or non-food items.
-      - Clean up any obvious typos if you recognize the famous dish name.
+      - Clean up any obvious typos if you recognize the dish name.
       - Do NOT include any explanations, Markdown formatting, or extra text.
     `;
 
@@ -73,23 +84,26 @@ export async function POST(request: NextRequest) {
     });
 
     const responseText = result.response.text();
-    const chineseLines: string[] = JSON.parse(responseText);
+    const parsedData = JSON.parse(responseText);
+    const primaryLanguage = parsedData.detectedLanguage;
+    const extractedLines: string[] = parsedData.menuItems || [];
 
-    console.log(`🤖 Gemini extracted ${chineseLines.length} menu items:`, chineseLines);
+    console.log(`🤖 Gemini extracted ${extractedLines.length} menu items in ${primaryLanguage}:`, extractedLines);
 
-    if (!chineseLines || chineseLines.length === 0) {
-      console.warn('⚠️ [API:Analyze] No Chinese dish names detected in the image');
+    if (!extractedLines || extractedLines.length === 0) {
+      console.warn('⚠️ [API:Analyze] No dish names detected in the image');
       return NextResponse.json(
-        { error: 'No Chinese menu items detected in the image. Please upload a clearer image.' },
+        { error: 'No menu items detected in the image. Please upload a clearer image.' },
         { status: 400 }
       );
     }
 
-    console.log(`✅ [API:Analyze] Returning ${chineseLines.length} menu items to client`);
+    console.log(`✅ [API:Analyze] Returning ${extractedLines.length} menu items to client`);
     return NextResponse.json({
       success: true,
-      text: chineseLines.join(', '), // fallback raw text representation
-      menuItems: chineseLines, // Return all parsed items
+      detectedLanguage: primaryLanguage,
+      text: extractedLines.join(', '), // fallback raw text representation
+      menuItems: extractedLines, // Return all parsed items
     });
 
   } catch (error) {
@@ -98,7 +112,7 @@ export async function POST(request: NextRequest) {
       {
         error: 'Failed to process image',
         details: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Please try with a clearer image or check if the image contains Chinese text'
+        hint: 'Please try with a clearer image or check if the image contains menu items'
       },
       { status: 500 }
     );

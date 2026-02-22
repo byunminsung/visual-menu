@@ -11,15 +11,15 @@ interface TranslationData {
   pronunciation: string;
 }
 
-// 중국어를 한국어 직역, 설명, 발음으로 변환 (Gemini API 사용)
-async function getFullTranslationWithGemini(chineseText: string): Promise<TranslationData> {
+// 원본 언어를 대상 언어로 번역, 설명, 발음으로 변환 (Gemini API 사용)
+async function getFullTranslationWithGemini(originalText: string, sourceLang: string, targetLang: string): Promise<TranslationData> {
   const apiKey = process.env.GEMINI_API_KEY;
   // 기본 폴백 데이터
   const fallback: TranslationData = {
-    originalText: chineseText,
-    literalTranslation: chineseText,
+    originalText: originalText,
+    literalTranslation: originalText,
     description: '설명을 가져올 수 없습니다.',
-    pronunciation: chineseText
+    pronunciation: originalText
   };
 
   if (!apiKey) {
@@ -31,15 +31,15 @@ async function getFullTranslationWithGemini(chineseText: string): Promise<Transl
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const prompt = `
-      You are an expert bilingual Chinese-Korean food translator.
-      I will provide you with a Chinese dish name.
+      You are an expert bilingual ${sourceLang}-${targetLang} food translator.
+      I will provide you with a ${sourceLang} dish name.
       Provide the following three pieces of information formatted EXACTLY as a JSON object, with no other text:
       
-      1. "literalTranslation": A word-by-word literal translation of the Chinese characters into Korean. (e.g. 鱼香肉丝 -> 물고기 향 고기 채)
-      2. "description": A natural, appetizing description of what the dish actually is in Korean. (e.g. 매콤달콤한 어향 소스에 볶은 돼지고기 채 요리)
-      3. "pronunciation": The phonetic Korean Hangul pronunciation of the Chinese characters. (e.g. 위샹러우쓰)
+      1. "literalTranslation": A literal translation or the closest equivalent name of the dish into ${targetLang}.
+      2. "description": A natural, appetizing description of what the dish actually is, written in ${targetLang}.
+      3. "pronunciation": The phonetic pronunciation of the original ${sourceLang} dish name, written using the alphabet or phonetic system of ${targetLang} (e.g., Hangul if target is Korean, alphabet if target is English).
       
-      Chinese Dish Name: ${chineseText}
+      ${sourceLang} Dish Name: ${originalText}
       
       Return ONLY valid JSON.
       Format:
@@ -62,10 +62,10 @@ async function getFullTranslationWithGemini(chineseText: string): Promise<Transl
     const parsedData = JSON.parse(responseText);
 
     return {
-      originalText: chineseText,
-      literalTranslation: parsedData.literalTranslation || chineseText,
+      originalText: originalText,
+      literalTranslation: parsedData.literalTranslation || originalText,
       description: parsedData.description || '음식 설명',
-      pronunciation: parsedData.pronunciation || chineseText,
+      pronunciation: parsedData.pronunciation || originalText,
     };
   } catch (error) {
     console.error('Gemini Translation Error:', error);
@@ -75,7 +75,10 @@ async function getFullTranslationWithGemini(chineseText: string): Promise<Transl
 
 export async function POST(request: NextRequest) {
   try {
-    const { text, texts } = await request.json();
+    const { text, texts, sourceLanguage, targetLanguage } = await request.json();
+
+    const srcLang = sourceLanguage || 'Unknown';
+    const tgtLang = targetLanguage || 'Korean';
 
     if (!text && !texts) {
       return NextResponse.json(
@@ -86,7 +89,7 @@ export async function POST(request: NextRequest) {
 
     // 단일 텍스트 번역
     if (text) {
-      const data = await getFullTranslationWithGemini(text);
+      const data = await getFullTranslationWithGemini(text, srcLang, tgtLang);
 
       return NextResponse.json({
         success: true,
@@ -101,7 +104,7 @@ export async function POST(request: NextRequest) {
     if (texts && Array.isArray(texts)) {
       const results = await Promise.all(
         texts.map(async (t: string) => {
-          const data = await getFullTranslationWithGemini(t);
+          const data = await getFullTranslationWithGemini(t, srcLang, tgtLang);
 
           return {
             original: data.originalText,
