@@ -1,7 +1,6 @@
 'use client';
 
 import { MenuItem } from '@/types/menu';
-import Image from 'next/image';
 
 interface MenuDisplayProps {
   menuItems: MenuItem[];
@@ -26,11 +25,10 @@ export default function MenuDisplay({ menuItems }: MenuDisplayProps) {
               <div className="flex-shrink-0">
                 {item.imageUrl ? (
                   <div className="relative w-full md:w-48 h-48 bg-gray-100 rounded-lg overflow-hidden">
-                    <Image
+                    <img
                       src={item.imageUrl}
                       alt={item.translatedText}
-                      fill
-                      className="object-cover"
+                      className="w-full h-full object-cover"
                     />
                   </div>
                 ) : (
@@ -60,11 +58,13 @@ export default function MenuDisplay({ menuItems }: MenuDisplayProps) {
                   <p className="text-2xl font-bold text-gray-800">{item.originalText}</p>
                 </div>
 
-                {/* 한국어 번역 */}
-                <div>
-                  <span className="text-sm text-gray-500 font-medium">한국어</span>
-                  <p className="text-xl text-gray-700">{item.translatedText}</p>
-                </div>
+                {/* 설명 (자연스러운 음식 설명 / 의역) */}
+                {item.translatedText && (
+                  <div>
+                    <span className="text-sm text-gray-500 font-medium">설명</span>
+                    <p className="text-sm text-gray-600 mt-1">{item.translatedText}</p>
+                  </div>
+                )}
 
                 {/* 발음 */}
                 <div>
@@ -72,11 +72,11 @@ export default function MenuDisplay({ menuItems }: MenuDisplayProps) {
                   <p className="text-lg text-blue-600 font-medium">{item.pronunciation}</p>
                 </div>
 
-                {/* 설명 */}
+                {/* 한국어 (한자 직역) */}
                 {item.description && (
                   <div>
-                    <span className="text-sm text-gray-500 font-medium">설명</span>
-                    <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                    <span className="text-sm text-gray-500 font-medium">한국어</span>
+                    <p className="text-xl text-gray-700">{item.description}</p>
                   </div>
                 )}
 

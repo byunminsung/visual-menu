@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createWorker } from 'tesseract.js';
+import { GoogleGenerativeAI, SchemaType, Schema } from '@google/generative-ai';
 
 export async function POST(request: NextRequest) {
-  let worker = null;
-  
   try {
     const formData = await request.formData();
     const file = formData.get('image') as File;
@@ -15,82 +13,94 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 파일을 Buffer로 변환
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error('❌ GEMINI_API_KEY is not configured in environment variables');
+      return NextResponse.json(
+        { error: 'Server configuration error: GEMINI_API_KEY is missing.' },
+        { status: 500 }
+      );
+    }
+
+    // Convert file to Buffer
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    console.log('🔍 Starting OCR recognition...');
+    console.log(`� [API:Analyze] Starting Gemini Vision analysis for ${file.name} (${bytes.byteLength} bytes)...`);
 
-    // Tesseract.js Worker 생성 및 설정
-    // workerPath를 명시적으로 설정하여 Next.js와의 호환성 문제 해결
-    worker = await createWorker('chi_sim', 1, {
-      workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
-      langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-      corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
-      logger: (m) => {
-        if (m.status === 'recognizing text') {
-          console.log(`📊 OCR Progress: ${Math.round(m.progress * 100)}%`);
-        } else if (m.status) {
-          console.log(`📝 ${m.status}`);
-        }
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+    // Define JSON Schema for the extraction
+    const schema: Schema = {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.STRING,
+        description: "The name of the Chinese food dish",
+      }
+    };
+
+    const prompt = `
+      You are an expert at parsing noisy OCR text and reading menus from Chinese restaurants.
+      I am providing you with an image of a Chinese restaurant menu. Your task is to extract ALL the names of the Chinese food dishes you can find in the image.
+      
+      Rules:
+      - Extract strings that are clearly Chinese food dish names.
+      - EXHAUSTIVE EXTRACTION: Do NOT stop at 10 items. You MUST extract EVERY SINGLE legitimate dish name present in the menu.
+      - IGNORE prices (like 12.95, $5, etc).
+      - IGNORE English translations or garbled English words.
+      - IGNORE single random characters or non-food items.
+      - Clean up any obvious typos if you recognize the famous dish name.
+      - Do NOT include any explanations, Markdown formatting, or extra text.
+    `;
+
+    // Construct image payload for Gemini
+    const imageParts = [
+      {
+        inlineData: {
+          data: buffer.toString('base64'),
+          mimeType: file.type || 'image/jpeg',
+        },
       },
+    ];
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }, ...imageParts] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: schema,
+      }
     });
 
-    console.log('✅ Worker initialized');
+    const responseText = result.response.text();
+    const chineseLines: string[] = JSON.parse(responseText);
 
-    // OCR 수행
-    const { data: { text } } = await worker.recognize(buffer);
+    console.log(`🤖 Gemini extracted ${chineseLines.length} menu items:`, chineseLines);
 
-    console.log('✅ OCR completed');
-    console.log('📄 Extracted text preview:', text.substring(0, 200));
-
-    // 텍스트를 줄 단위로 분리하고 빈 줄 제거
-    const lines = text
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0);
-
-    // 중국어 문자가 포함된 줄만 필터링
-    const chineseLines = lines.filter(line => 
-      /[\u4e00-\u9fa5]/.test(line)
-    );
-
-    console.log(`📝 Found ${chineseLines.length} lines with Chinese characters`);
-
-    if (chineseLines.length === 0) {
+    if (!chineseLines || chineseLines.length === 0) {
+      console.warn('⚠️ [API:Analyze] No Chinese dish names detected in the image');
       return NextResponse.json(
-        { error: 'No Chinese text detected in the image. Please upload an image with Chinese text.' },
+        { error: 'No Chinese menu items detected in the image. Please upload a clearer image.' },
         { status: 400 }
       );
     }
 
+    console.log(`✅ [API:Analyze] Returning ${chineseLines.length} menu items to client`);
     return NextResponse.json({
       success: true,
-      text: text,
-      menuItems: chineseLines.slice(0, 10), // 최대 10개 메뉴 항목
+      text: chineseLines.join(', '), // fallback raw text representation
+      menuItems: chineseLines, // Return all parsed items
     });
 
   } catch (error) {
-    console.error('❌ OCR Error:', error);
+    console.error('❌ Vision API Error:', error);
     return NextResponse.json(
-      { 
-        error: 'Failed to process image', 
+      {
+        error: 'Failed to process image',
         details: error instanceof Error ? error.message : 'Unknown error',
         hint: 'Please try with a clearer image or check if the image contains Chinese text'
       },
       { status: 500 }
     );
-  } finally {
-    // Worker 종료 (메모리 누수 방지)
-    if (worker) {
-      try {
-        await worker.terminate();
-        console.log('🧹 Worker terminated');
-      } catch (e) {
-        console.error('Warning: Failed to terminate worker:', e);
-      }
-    }
   }
 }
-
-// Made with Bob

@@ -12,9 +12,55 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 
 // 환경 변수에서 API 키 가져오기
+const GOOGLE_SEARCH_API_KEY = process.env.GOOGLE_SEARCH_API_KEY;
+const GOOGLE_SEARCH_CX = process.env.GOOGLE_SEARCH_CX;
 const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
 const PIXABAY_API_KEY = process.env.PIXABAY_API_KEY;
 const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
+
+import * as cheerio from 'cheerio';
+
+// 직접 구글 이미지 검색 스크래핑을 통한 결과 가져오기 (API 제한 우회)
+async function scrapeGoogleImage(query: string): Promise<string | null> {
+  try {
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query + ' chinese dish')}&udm=2`;
+
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Scraper HTTP error! Status: ${response.status}`);
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    // Google 이미지 검색 결과 HTML 구조에서 이미지 URL 추출 시도
+    let imageUrl: string | null = null;
+
+    // 정규식을 사용하여 첫 번째 진짜 이미지 URL 찾기 시도
+    // 구글 이미지 스크립트 내부에서 url 찾아내기
+    const urls = html.match(/\["([^"]+\.(?:jpg|jpeg|png|webp))",\d+,\d+\]/i);
+    if (urls && urls[1]) {
+      // url 디코딩 처리 (\u003d -> =)
+      imageUrl = urls[1].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
+    }
+
+    if (imageUrl) {
+      return imageUrl;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Google scraping error:', error);
+    return null;
+  }
+}
 
 // Pexels API로 이미지 검색
 async function searchPexelsImage(query: string): Promise<string | null> {
@@ -135,18 +181,18 @@ function getFallbackImage(dishName: string): string {
   return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=400&fit=crop';
 }
 
-// 우선순위에 따라 이미지 검색 (Pexels → Pixabay → Unsplash → Fallback)
+// 우선순위에 따라 이미지 검색 (Google → Pixabay → Unsplash → Fallback)
 async function searchImage(query: string): Promise<string> {
   console.log(`🔍 Searching image for: ${query}`);
 
-  // 1순위: Pexels (시간당 200 요청)
-  let imageUrl = await searchPexelsImage(query);
+  // 1순위: Google 직접 스크래핑 검색
+  let imageUrl = await scrapeGoogleImage(query);
   if (imageUrl) {
-    console.log('✅ Found image from Pexels');
+    console.log('✅ Found image from Google Scraper');
     return imageUrl;
   }
 
-  // 2순위: Pixabay (시간당 100 요청)
+  // 2순위: Pixabay
   imageUrl = await searchPixabayImage(query);
   if (imageUrl) {
     console.log('✅ Found image from Pixabay');
@@ -167,7 +213,9 @@ async function searchImage(query: string): Promise<string> {
 
 export async function POST(request: NextRequest) {
   try {
-    const { query, queries } = await request.json();
+    const body = await request.json();
+    console.log(`🔍 [API:SearchImage] Received request with body keys:`, Object.keys(body));
+    const { query, queries } = body;
 
     if (!query && !queries) {
       return NextResponse.json(
@@ -178,6 +226,7 @@ export async function POST(request: NextRequest) {
 
     // 단일 검색
     if (query) {
+      console.log(`🔍 [API:SearchImage] Processing single query: "${query}"`);
       const imageUrl = await searchImage(query);
 
       return NextResponse.json({
@@ -189,6 +238,7 @@ export async function POST(request: NextRequest) {
 
     // 여러 검색
     if (queries && Array.isArray(queries)) {
+      console.log(`🔍 [API:SearchImage] Processing ${queries.length} multiple queries...`);
       const results = await Promise.all(
         queries.map(async (q: string) => {
           const imageUrl = await searchImage(q);

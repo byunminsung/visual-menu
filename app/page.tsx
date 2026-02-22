@@ -14,6 +14,13 @@ export default function Home() {
   const [processingStep, setProcessingStep] = useState<ProcessingStep>('idle');
   const [error, setError] = useState<string | null>(null);
 
+  console.log('🏠 [Home] Rendering Home component. State:', {
+    hasMenuItems: menuItems.length > 0,
+    isProcessing,
+    processingStep,
+    hasError: !!error
+  });
+
   const handleImageUpload = async (file: File) => {
     setIsProcessing(true);
     setError(null);
@@ -21,11 +28,11 @@ export default function Home() {
     setProcessingStep('ocr');
 
     try {
-      console.log('🚀 Starting menu analysis...');
-      
+      console.log(`🚀 [Home] Starting menu analysis for file: ${file.name} (${file.size} bytes)...`);
+
       // 이미지 분석 수행
       const items = await analyzeMenuImage(file);
-      
+
       setProcessingStep('complete');
       setMenuItems(items);
       console.log('✅ Analysis complete!', items);
@@ -42,9 +49,9 @@ export default function Home() {
     switch (processingStep) {
       case 'ocr':
         return {
-          icon: '🔍',
-          title: 'OCR 처리 중...',
-          message: '이미지에서 중국어 텍스트를 인식하고 있습니다. (5-10초 소요)',
+          icon: '✨',
+          title: 'AI 분석 중...',
+          message: 'Gemini AI가 메뉴 이미지에서 중국어 음식 이름을 추출하고 있습니다.',
         };
       case 'translate':
         return {
@@ -116,13 +123,13 @@ export default function Home() {
                     {processingMessage.title}
                   </h3>
                   <p className="text-blue-700">{processingMessage.message}</p>
-                  
+
                   {/* 진행 바 */}
                   <div className="mt-4">
                     <div className="flex items-center space-x-2 text-sm text-blue-600">
                       <div className={`flex items-center ${processingStep === 'ocr' || processingStep === 'translate' || processingStep === 'search' || processingStep === 'complete' ? 'text-blue-600 font-semibold' : 'text-gray-400'}`}>
                         <span className={`w-2 h-2 rounded-full mr-1 ${processingStep === 'ocr' || processingStep === 'translate' || processingStep === 'search' || processingStep === 'complete' ? 'bg-blue-600' : 'bg-gray-400'}`}></span>
-                        OCR
+                        AI 분석
                       </div>
                       <span className="text-gray-400">→</span>
                       <div className={`flex items-center ${processingStep === 'translate' || processingStep === 'search' || processingStep === 'complete' ? 'text-blue-600 font-semibold' : 'text-gray-400'}`}>
@@ -210,9 +217,9 @@ export default function Home() {
                   />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">OCR 인식</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">AI 비전 분석</h3>
               <p className="text-gray-600">
-                이미지에서 중국어 텍스트를 자동으로 인식합니다
+                Gemini AI가 이미지에서 음식 이름을 정확하게 추출합니다
               </p>
             </div>
 
@@ -271,7 +278,7 @@ export default function Home() {
               <strong>실제 OCR 및 번역 기능이 작동합니다!</strong>
             </p>
             <p className="text-sm">
-              Tesseract.js (OCR) + MyMemory API (번역) + Unsplash (이미지)
+              Google Gemini 2.5 Flash (비전/번역) + 웹 스크래핑 (이미지)
             </p>
           </div>
         </div>

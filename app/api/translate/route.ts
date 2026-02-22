@@ -1,63 +1,76 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// 무료 번역 API 사용 (MyMemory Translation API)
-// 또는 Google Translate API를 사용하려면 API 키가 필요합니다
-async function translateText(text: string, targetLang: string = 'ko'): Promise<string> {
-  try {
-    // MyMemory Translation API (무료, 하루 1000 단어 제한)
-    const response = await fetch(
-      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=zh|${targetLang}`
-    );
-    
-    const data = await response.json();
-    
-    if (data.responseStatus === 200 && data.responseData) {
-      return data.responseData.translatedText;
-    }
-    
-    throw new Error('Translation failed');
-  } catch (error) {
-    console.error('Translation error:', error);
-    // 폴백: 원본 텍스트 반환
-    return text;
-  }
+// 무료 번역 API (MyMemory)는 간단한 번역만 제공하므로,
+// 프롬프트를 통해 직역, 자연스러운 설명, 발음을 한 번에 Gemini에서 가져오도록 변경합니다.
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+interface TranslationData {
+  originalText: string;
+  literalTranslation: string;
+  description: string;
+  pronunciation: string;
 }
 
-// 중국어를 한국어 발음으로 변환 (간단한 매핑)
-function getKoreanPronunciation(chineseText: string): string {
-  // 실제로는 pinyin을 한글로 변환하는 라이브러리를 사용해야 하지만
-  // 여기서는 간단한 예시를 제공합니다
-  // 실제 구현에서는 pinyin 라이브러리와 한글 변환 로직이 필요합니다
-  
-  // 일반적인 중국 요리 이름 매핑
-  const commonDishes: { [key: string]: string } = {
-    '宫保鸡丁': '궁바오지딩',
-    '麻婆豆腐': '마파두부',
-    '北京烤鸭': '베이징카오야',
-    '小笼包': '샤오롱바오',
-    '酸辣汤': '산라탕',
-    '糖醋里脊': '탕추리지',
-    '红烧肉': '홍샤오러우',
-    '鱼香肉丝': '위샹러우쓰',
-    '回锅肉': '후이궈러우',
-    '水煮鱼': '수이주위',
-    '担担面': '단단면',
-    '炒饭': '차오판',
-    '炒面': '차오면',
-    '饺子': '자오즈',
-    '包子': '바오즈',
-    '馒头': '만터우',
-    '春卷': '춘쥐안',
-    '锅贴': '궈티에',
+// 중국어를 한국어 직역, 설명, 발음으로 변환 (Gemini API 사용)
+async function getFullTranslationWithGemini(chineseText: string): Promise<TranslationData> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  // 기본 폴백 데이터
+  const fallback: TranslationData = {
+    originalText: chineseText,
+    literalTranslation: chineseText,
+    description: '설명을 가져올 수 없습니다.',
+    pronunciation: chineseText
   };
 
-  // 매핑된 발음이 있으면 반환
-  if (commonDishes[chineseText]) {
-    return commonDishes[chineseText];
+  if (!apiKey) {
+    return fallback;
   }
 
-  // 없으면 간단한 음역 (실제로는 더 복잡한 로직 필요)
-  return chineseText;
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+    const prompt = `
+      You are an expert bilingual Chinese-Korean food translator.
+      I will provide you with a Chinese dish name.
+      Provide the following three pieces of information formatted EXACTLY as a JSON object, with no other text:
+      
+      1. "literalTranslation": A word-by-word literal translation of the Chinese characters into Korean. (e.g. 鱼香肉丝 -> 물고기 향 고기 채)
+      2. "description": A natural, appetizing description of what the dish actually is in Korean. (e.g. 매콤달콤한 어향 소스에 볶은 돼지고기 채 요리)
+      3. "pronunciation": The phonetic Korean Hangul pronunciation of the Chinese characters. (e.g. 위샹러우쓰)
+      
+      Chinese Dish Name: ${chineseText}
+      
+      Return ONLY valid JSON.
+      Format:
+      {
+        "literalTranslation": "...",
+        "description": "...",
+        "pronunciation": "..."
+      }
+    `;
+
+    const result = await model.generateContent(prompt);
+    let responseText = result.response.text().trim();
+    // 마크다운 흔적 제거
+    if (responseText.startsWith('\`\`\`json')) {
+      responseText = responseText.replace(/^\`\`\`json\n/g, '').replace(/\n\`\`\`$/g, '');
+    } else if (responseText.startsWith('\`\`\`')) {
+      responseText = responseText.replace(/^\`\`\`\n/g, '').replace(/\n\`\`\`$/g, '');
+    }
+
+    const parsedData = JSON.parse(responseText);
+
+    return {
+      originalText: chineseText,
+      literalTranslation: parsedData.literalTranslation || chineseText,
+      description: parsedData.description || '음식 설명',
+      pronunciation: parsedData.pronunciation || chineseText,
+    };
+  } catch (error) {
+    console.error('Gemini Translation Error:', error);
+    return fallback;
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -73,14 +86,14 @@ export async function POST(request: NextRequest) {
 
     // 단일 텍스트 번역
     if (text) {
-      const translated = await translateText(text);
-      const pronunciation = getKoreanPronunciation(text);
+      const data = await getFullTranslationWithGemini(text);
 
       return NextResponse.json({
         success: true,
-        original: text,
-        translated,
-        pronunciation,
+        original: data.originalText,
+        translated: data.literalTranslation,
+        description: data.description,
+        pronunciation: data.pronunciation,
       });
     }
 
@@ -88,13 +101,13 @@ export async function POST(request: NextRequest) {
     if (texts && Array.isArray(texts)) {
       const results = await Promise.all(
         texts.map(async (t: string) => {
-          const translated = await translateText(t);
-          const pronunciation = getKoreanPronunciation(t);
-          
+          const data = await getFullTranslationWithGemini(t);
+
           return {
-            original: t,
-            translated,
-            pronunciation,
+            original: data.originalText,
+            translated: data.literalTranslation, // 직역을 번역 결과로 전달
+            description: data.description,
+            pronunciation: data.pronunciation,
           };
         })
       );

@@ -8,7 +8,28 @@ const nextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'images.pexels.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'cdn.pixabay.com',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'pixabay.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
+  },
+  experimental: {
+    serverComponentsExternalPackages: ['tesseract.js'],
   },
   webpack: (config, { isServer }) => {
     // Tesseract.js 워커 파일 처리
@@ -20,7 +41,7 @@ const nextConfig = {
         crypto: false,
       };
     }
-    
+
     // Tesseract.js 워커 스크립트를 정적 파일로 복사
     config.module.rules.push({
       test: /\.wasm$/,
